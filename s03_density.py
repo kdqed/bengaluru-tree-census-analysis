@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import h3
+import pandas as pd
 import plotly.express as px
 import shapely
 
@@ -91,6 +92,32 @@ def draw_choropleth(df, color_column, title, filename):
     fig.write_image(Path('results') / filename)
 
 
+
+# Density For Each Corp
+corp_group = trees[['gba_corporation']].groupby(by='gba_corporation').value_counts()
+corp_group = corp_group.reset_index(name='Count')
+corp_group = corp_group[corp_group['gba_corporation'] != 'none']
+corp_group['trees_per_sqkm'] = corp_group.apply(
+    lambda r: round(r['Count'] / corp_areas[r['gba_corporation']]),
+    axis = 1
+)
+corp_group = corp_group.sort_values(ascending=False, by='trees_per_sqkm')
+
+
+TOTAL_AREA = sum(corp_areas.values())
+TOTAL_COUNT = sum(list(corp_group['Count']))
+corp_group = pd.concat(
+    [corp_group, pd.DataFrame([{
+        "gba_corporation": "Total",
+        "Count": TOTAL_COUNT,
+        "trees_per_sqkm": round(TOTAL_COUNT/TOTAL_AREA)
+    }])], 
+    ignore_index = True
+)
+corp_group.to_markdown(Path('results') / 'blr_corpwise_density.md', index = False)
+
+# Maps For Each Corp
+
 def map_for_corporation(corp):
     cells = geom_to_cells(corp['geometry'], 8)
     h3df = gpd.GeoDataFrame({
@@ -109,7 +136,7 @@ def map_for_corporation(corp):
     p_name = corp['name'][0].upper() + corp['name'][1:]
     draw_choropleth(h3df, 'Tree Count', 
         f'BLR {p_name} Corporation: Density Map of Census Trees',
-        f'density_map_{corp["name"]}.png'
+        f'{corp["name"]}_density_map.png'
     )
 
 corps.apply(map_for_corporation, axis=1)
@@ -133,5 +160,5 @@ def update_count(r):
 cell_counts.apply(update_count, axis=1)
 draw_choropleth(h3df, 'Tree Count', 
     f'Bengaluru GBA Area: Density Map of Census Trees',
-    f'density_map_blr_wide.png'
+    f'blr_density_map.png'
 )
